@@ -15,18 +15,25 @@ import com.maxmind.minfraud.response.ScoreResponse;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.auth.BasicScheme;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.ssl.SSLContexts;
 import org.apache.http.util.EntityUtils;
 
+import javax.net.ssl.SSLContext;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.*;
@@ -78,7 +85,19 @@ public final class WebServiceClient implements Closeable {
         httpClient =
                 HttpClientBuilder.create()
                         .setUserAgent(userAgent())
+                        .setSSLSocketFactory(configSecurity())
                         .setDefaultRequestConfig(config).build();
+    }
+
+    private SSLConnectionSocketFactory configSecurity() {
+        SSLContext sslContext = SSLContexts.createDefault();
+
+        SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext,
+                new String[]{"TLSv1.2"},
+                null,
+                new NoopHostnameVerifier());
+
+        return sslsf;
     }
 
     /**
