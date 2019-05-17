@@ -8,14 +8,13 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.util.StdDateFormat;
 import com.maxmind.minfraud.exception.*;
+import com.maxmind.minfraud.exception.HttpException;
 import com.maxmind.minfraud.request.Transaction;
 import com.maxmind.minfraud.response.FactorsResponse;
 import com.maxmind.minfraud.response.InsightsResponse;
 import com.maxmind.minfraud.response.ScoreResponse;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpHost;
-import org.apache.http.HttpResponse;
 import org.apache.http.auth.AuthScope;
+import org.apache.http.*;
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
@@ -31,6 +30,7 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.ssl.SSLContexts;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 
 import javax.net.ssl.SSLContext;
@@ -82,11 +82,18 @@ public final class WebServiceClient implements Closeable {
         }
 
         RequestConfig config = configBuilder.build();
-        httpClient =
+        HttpClientBuilder clientBuilder =
                 HttpClientBuilder.create()
                         .setUserAgent(userAgent())
                         .setSSLSocketFactory(configSecurity())
-                        .setDefaultRequestConfig(config).build();
+                        .setDefaultRequestConfig(config);
+        if (builder.logging != null) {
+            LogInterceptor interceptor = new LogInterceptor(builder.logging);
+            clientBuilder
+                    .addInterceptorLast((HttpRequestInterceptor) interceptor)
+                    .addInterceptorLast((HttpResponseInterceptor) interceptor);
+        }
+        httpClient = clientBuilder.build();
     }
 
     private SSLConnectionSocketFactory configSecurity() {
@@ -131,6 +138,8 @@ public final class WebServiceClient implements Closeable {
 
         List<String> locales = Collections.singletonList("en");
         private Proxy proxy;
+
+        private ClientLogging logging;
 
         /**
          * @param accountId     Your MaxMind account ID.
@@ -215,12 +224,45 @@ public final class WebServiceClient implements Closeable {
             return this;
         }
 
+        public Builder enableCustomLogging(ClientLogging logging) {
+            this.logging = logging;
+            return this;
+        }
+
         /**
          * @return an instance of {@code WebServiceClient} created from the
          * fields set on this builder.
          */
         public WebServiceClient build() {
             return new WebServiceClient(this);
+        }
+    }
+
+    public interface ClientLogging {
+        void logRequest(HttpRequest httpRequest);
+
+        void logResponse(HttpResponse httpResponse);
+    }
+
+    private static final class LogInterceptor implements HttpRequestInterceptor, HttpResponseInterceptor {
+
+        private ClientLogging logging;
+
+        LogInterceptor(ClientLogging logging) {
+            this.logging = logging;
+        }
+
+        @Override
+        public void process(HttpRequest httpRequest, HttpContext httpContext) throws org.apache.http.HttpException, IOException {
+            try {logging.logRequest(httpRequest);}
+            catch (Exception ignored) {}
+
+        }
+
+        @Override
+        public void process(HttpResponse httpResponse, HttpContext httpContext) throws org.apache.http.HttpException, IOException {
+            try {logging.logResponse(httpResponse);}
+            catch (Exception ignored) {}
         }
     }
 
